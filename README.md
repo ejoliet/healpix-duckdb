@@ -2,8 +2,6 @@
 
 > HEALPix pixels, IVOA MOC (Multi-Order Coverage) regions, and ADQL-exact cone and polygon search for DuckDB and DuckDB-WASM.
 
-**GitHub About**: `HEALPix, MOC, and exact sky-region queries for DuckDB, native and in the browser.`
-
 ![CI](https://github.com/ejoliet/duckdb-healpix/actions/workflows/ci.yml/badge.svg)
 ![DuckDB](https://img.shields.io/badge/duckdb-1.4%2B-yellow)
 ![Rust](https://img.shields.io/badge/rust-1.80%2B-orange)
