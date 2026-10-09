@@ -1,6 +1,8 @@
 # duckdb-healpix
 
-> HEALPix pixels, IVOA MOC (Multi-Order Coverage) regions, and exact spherical predicates for DuckDB — native and DuckDB-WASM — so a static HATS bucket can answer ADQL geometry without a server.
+> HEALPix pixels, IVOA MOC (Multi-Order Coverage) regions, and ADQL-exact cone and polygon search for DuckDB and DuckDB-WASM.
+
+**GitHub About**: `HEALPix, MOC, and exact sky-region queries for DuckDB, native and in the browser.`
 
 ![CI](https://github.com/ejoliet/duckdb-healpix/actions/workflows/ci.yml/badge.svg)
 ![DuckDB](https://img.shields.io/badge/duckdb-1.4%2B-yellow)
@@ -329,7 +331,7 @@ These tools consume this extension. Changing a signature below is a breaking cha
 | 2 | `MOC` type, constructors, set ops, I/O; `tools/oracle/moc.py` | `moc.test` passes byte-equal vs MOCPy |
 | 3 | `sky_*` predicates; pgSphere fixtures (SQL + compose in `tools/pgsphere/`, fixtures committed by Emmanuel) | `sky.test` passes: zero row-set diffs on 250 regions |
 | 4 | `hats_partitions` macro; `tools/oracle/hats.py` with `lsdb` | `hats.test` passes: pruned = full scan; partition list = lsdb |
-| 5 | `test/wasm/parity.mjs`; `description.yml`; `docs/functions.md` generated; `docs/adql-mapping.md` | `make test-wasm` passes; `description.yml` validates against community-extensions schema |
+| 5 | `test/wasm/parity.mjs`; `description.yml` with `description: HEALPix and MOC for astronomy on the sphere`; `docs/functions.md` generated; `docs/adql-mapping.md` | `make test-wasm` passes; `description.yml` validates against community-extensions schema |
 
 ### Division of labour
 
