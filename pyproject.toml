@@ -1,0 +1,18 @@
+[project]
+name = "duckdb-healpix-tools"
+version = "0.1.0"
+description = "Oracle generation and doc tooling for the duckdb-healpix extension (not published)"
+requires-python = ">=3.11"
+# AIDEV-NOTE: runtime deps are deliberately empty at Gate 0 —
+# tools/gen_functions_doc.py is stdlib-only. The oracle dependencies
+# (cdshealpix, astropy-healpix, mocpy, lsdb, pyarrow) arrive with the
+# tools/oracle/ scripts in Gates 1-4. uv.lock is committed either way, per
+# AGENTS.md: "Python helpers under tools/ run with uv run; keep uv.lock
+# committed".
+dependencies = []
+
+[dependency-groups]
+oracle = []
+
+[tool.uv]
+package = false

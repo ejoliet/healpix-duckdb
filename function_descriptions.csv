@@ -1,0 +1,2 @@
+function,signature,returns,group,description,example
+hpx_ang2pix,"hpx_ang2pix(order INTEGER, ra DOUBLE, dec DOUBLE)",BIGINT,pixel,"NESTED HEALPix index of an ICRS position at the given order. Order must be in [0,29]; ra in [0,360); dec in [-90,90]. Returns NULL if any argument is NULL.","SELECT hpx_ang2pix(12, 266.405, -28.936); -- 118088310"

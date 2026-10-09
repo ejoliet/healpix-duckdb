@@ -1,0 +1,26 @@
+[package]
+name = "healpix"
+version = "0.1.0"
+edition = "2021"
+description = "HEALPix and MOC for astronomy on the sphere"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+strip = true
+
+[[example]]
+# crate-type can't be (at the moment) be overriden for specific targets
+# src/wasm_lib.rs forwards to src/lib.rs so that we can change from cdylib
+# (that is needed while compiling natively) to staticlib (needed since the
+# actual linking will be done via emcc
+name = "healpix"
+path = "src/wasm_lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+duckdb = { version = "~1.10506.0", features = ["loadable-extension", "vscalar"] }
+cdshealpix = "0.7"

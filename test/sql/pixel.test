@@ -1,0 +1,188 @@
+# name: test/sql/pixel.test
+# description: Gate 0 — hpx_ang2pix NESTED pixel indexing
+# group: [healpix]
+
+# Before the extension is loaded the function must not exist.
+statement error
+SELECT hpx_ang2pix(12, 266.405, -28.936);
+----
+Catalog Error
+
+require healpix
+
+# Values cross-checked against astropy-healpix
+# (HEALPix(nside=2**order, order='nested').lonlat_to_healpix).
+query I
+SELECT hpx_ang2pix(12, 266.405, -28.936);
+----
+118088310
+
+query I
+SELECT hpx_ang2pix(8, 266.405, -28.936);
+----
+461282
+
+query I
+SELECT hpx_ang2pix(10, 266.405, -28.936);
+----
+7380519
+
+# The 12 base cells at order 0.
+query I
+SELECT hpx_ang2pix(0, 0.0, 0.0);
+----
+4
+
+query I
+SELECT hpx_ang2pix(0, 180.0, 0.0);
+----
+6
+
+query I
+SELECT hpx_ang2pix(0, 45.0, -60.0);
+----
+8
+
+# Poles are exactly representable at the maximum order.
+query I
+SELECT hpx_ang2pix(29, 0.0, 90.0);
+----
+288230376151711743
+
+query I
+SELECT hpx_ang2pix(29, 0.0, -90.0);
+----
+2305843009213693952
+
+query I
+SELECT hpx_ang2pix(29, 123.456, -45.678);
+----
+2759817459388122447
+
+# A NESTED index at order k right-shifted by 2 bits is the order k-1 index.
+query I
+SELECT hpx_ang2pix(10, 266.405, -28.936) >> 2 = hpx_ang2pix(9, 266.405, -28.936);
+----
+true
+
+# Vector representation: DuckDB passes a CONSTANT vector for a literal argument
+# and a FLAT vector for a column. Both must give the same answer, over more rows
+# than one chunk (2048), or the chunk-level slice access is reading past the end
+# of a constant vector's single-element payload.
+query I
+SELECT count(*) FROM (SELECT 12::INT AS o, 266.405 AS ra, -28.936 AS dec FROM range(3000))
+WHERE hpx_ang2pix(o, ra, dec) != 118088310;
+----
+0
+
+# Order varying per row across its whole legal range within single chunks: every
+# result must be a valid index at its own order, i.e. in [0, 12 * 4^order).
+query I
+SELECT count(*) FROM (
+  SELECT (i % 30)::INT AS o, hpx_ang2pix((i % 30)::INT, 266.405, -28.936) AS p
+  FROM range(3000) t(i)
+) WHERE p < 0 OR p >= 12 * (1::BIGINT << (2 * o));
+----
+0
+
+# Vectorised multi-chunk evaluation agrees with the order-0 parent of each cell.
+query I
+SELECT count(*) FROM (
+  SELECT (i * 0.37) % 360 AS ra, (i % 179) - 89.0 AS dec FROM range(4000) t(i)
+) WHERE hpx_ang2pix(10, ra, dec) >> 20 != hpx_ang2pix(0, ra, dec);
+----
+0
+
+# NULL in any argument propagates to NULL.
+query III
+SELECT hpx_ang2pix(NULL, 10.0, 10.0), hpx_ang2pix(12, NULL, 10.0), hpx_ang2pix(12, 10.0, NULL);
+----
+NULL	NULL	NULL
+
+# NULLs mixed with valid rows in the same chunk.
+query I
+SELECT count(*) FROM (
+  SELECT hpx_ang2pix(12, CASE WHEN i % 2 = 0 THEN NULL ELSE i % 360 END, 0.0) AS p
+  FROM range(2000) t(i)
+) WHERE p IS NULL;
+----
+1000
+
+# An error raised partway through a chunk, after valid rows have already been
+# written to the output vector and before the null mask is applied. The partial
+# output must never be observable and the connection must survive.
+statement error
+SELECT hpx_ang2pix(CASE WHEN i = 1500 THEN 30 ELSE 12 END, 266.405, -28.936)
+FROM range(3000) t(i);
+----
+healpix: order must be in [0,29], got 30
+
+# Same, with NULL rows interleaved so the error happens with a partly-built
+# null mask.
+statement error
+SELECT hpx_ang2pix(CASE WHEN i % 2 = 0 THEN NULL WHEN i = 1501 THEN 30 ELSE 12 END, 266.405, -28.936)
+FROM range(3000) t(i);
+----
+healpix: order must be in [0,29], got 30
+
+# The connection is still usable after a mid-chunk error.
+query I
+SELECT hpx_ang2pix(12, 266.405, -28.936);
+----
+118088310
+
+# AIDEV-INVARIANT: KNOWN LIMITATION, pinned deliberately. The C Extension API
+# has no error-mode setter, so DuckDB treats hpx_ang2pix as CANNOT_ERROR and may
+# evaluate dictionary entries that no result row references. Here every joined
+# row has ra = 10.0 and NO row has ra = 400.0, yet strict validation still
+# rejects the query. See docs/adr/0006-dictionary-evaluation-of-unreferenced-rows.md.
+# If this ever starts succeeding, DuckDB changed behaviour and the ADR must be
+# revisited — this test failing is informative, not a regression to paper over.
+statement error
+WITH dict AS (SELECT * FROM (VALUES (0, 10.0::DOUBLE), (1, 400.0::DOUBLE)) v(k, ra)),
+     rows AS (SELECT 0 AS k FROM range(3000))
+SELECT count(*) FROM rows JOIN dict USING(k) WHERE hpx_ang2pix(12, ra, 0.0) >= 0;
+----
+healpix: ra must be in [0,360), got 400
+
+# Control: the identical query shape with every dictionary entry legal must
+# succeed, proving the failure above is caused by the unreferenced entry and
+# not by the join shape itself.
+query I
+WITH dict AS (SELECT * FROM (VALUES (0, 10.0::DOUBLE), (1, 300.0::DOUBLE)) v(k, ra)),
+     rows AS (SELECT 0 AS k FROM range(3000))
+SELECT count(*) FROM rows JOIN dict USING(k) WHERE hpx_ang2pix(12, ra, 0.0) >= 0;
+----
+3000
+
+# Order must be in [0,29].
+statement error
+SELECT hpx_ang2pix(30, 0.0, 0.0);
+----
+healpix: order must be in [0,29], got 30
+
+statement error
+SELECT hpx_ang2pix(-1, 0.0, 0.0);
+----
+healpix: order must be in [0,29], got -1
+
+# RA is half-open [0,360); Dec is closed [-90,90].
+statement error
+SELECT hpx_ang2pix(12, 360.0, 0.0);
+----
+healpix: ra must be in [0,360)
+
+statement error
+SELECT hpx_ang2pix(12, -0.001, 0.0);
+----
+healpix: ra must be in [0,360)
+
+statement error
+SELECT hpx_ang2pix(12, 0.0, 90.001);
+----
+healpix: dec must be in [-90,90]
+
+statement error
+SELECT hpx_ang2pix(12, 0.0, -90.001);
+----
+healpix: dec must be in [-90,90]
