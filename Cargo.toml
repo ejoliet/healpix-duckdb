@@ -2,6 +2,9 @@
 name = "healpix"
 version = "0.1.0"
 edition = "2021"
+# MSRV is set by the `duckdb` crate (1.85.1); `cdshealpix` needs 1.81.
+# See CONTRIBUTING.md "Compatibility" and docs/adr/0003.
+rust-version = "1.85.1"
 description = "HEALPix and MOC for astronomy on the sphere"
 license = "MIT"
 

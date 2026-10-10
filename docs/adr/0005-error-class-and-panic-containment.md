@@ -73,7 +73,7 @@ anything this project writes.
 | A | Keep both the crate's containment and our own inner `catch_unwind`; accept one exception class; distinguish by message prefix | Invariant 7 holds visibly in our own source and does not silently depend on crate internals; the message carries the distinction the class cannot | **Chosen** |
 | B | Drop our `catch_unwind` and rely solely on `duckdb-rs` | Invariant 7 becomes invisible in this repo and silently hostage to a transitive dependency's internals. A crate upgrade that changed `contain_callback` would remove the guard with no local signal. In WASM the failure mode is a dead browser tab | Rejected — the cost of keeping it is a `match` |
 | C | Patch/fork DuckDB or the C API to expose an exception class | Enormous scope, upstream-owned, for a cosmetic distinction | Rejected |
-| D | Amend the README to drop `InternalException` | Correct eventually, but the README is the spec and is Emmanuel's to change | Deferred to Emmanuel — see Consequences |
+| D | Amend the README to drop `InternalException` | Correct eventually, but the README is the spec and changes to it are a maintainer decision | Deferred to the maintainer — see Consequences |
 
 ## Decision
 
@@ -94,7 +94,7 @@ anything this project writes.
 - The README "Error handling" table's `InternalException` row is **not
   implementable** and should be corrected to say: caught panics are surfaced as
   `InvalidInputException` with an `healpix: internal error (...)` message, and
-  never abort the process. Flagged for Emmanuel; not edited here, because the
+  never abort the process. Flagged for the maintainer; not edited here, because the
   README is the spec.
 - Tests must assert on **message text**, not on exception class, when
   distinguishing user error from internal error. `test/sql/pixel.test` already

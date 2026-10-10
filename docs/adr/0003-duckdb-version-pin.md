@@ -23,12 +23,11 @@ USE_UNSTABLE_C_API=1
 
 This is **not optional for a Rust extension**: `duckdb-rs` uses unstable C API
 surface, so the build stamps `FIELD5 (abi_type) = C_STRUCT_UNSTABLE` into the
-extension metadata. The loader enforces it. Observed directly on this machine:
+extension metadata. The loader enforces it: a DuckDB of any other version,
+newer or older, refuses the file. Verified with a v1.5.5 CLI against a v1.5.6
+build:
 
 ```
-$ duckdb --version
-v1.5.5 (Variegata) d8cdaa33fd
-
 $ duckdb -unsigned -c "LOAD 'build/debug/healpix.duckdb_extension'; SELECT hpx_ang2pix(12, 266.405, -28.936);"
 Invalid Input Error: Failed to load 'build/debug/healpix.duckdb_extension',
 The file was built specifically for DuckDB version 'v1.5.6' and can only be
@@ -80,10 +79,16 @@ The README Prerequisites table should be corrected from "1.4.x" to "1.5.6".
 
 ## Consequences
 
-- **A contributor's system DuckDB CLI will usually refuse to load a local
-  build**, exactly as shown above. This is expected, not a bug. Use the
-  matching CLI version, or test through `make test`, which uses the pinned
-  `duckdb==1.5.6` Python package in `configure/venv`.
+- **A contributor's system DuckDB CLI will refuse to load a local build
+  unless it is exactly the pinned version**, as shown above. This is expected,
+  not a bug. Use the matching CLI version, or test through `make test`, which
+  uses the pinned `duckdb==1.5.6` Python package in `configure/venv`.
+  `CONTRIBUTING.md` carries the full compatibility table.
+- The Rust MSRV is dictated by the `duckdb` crate: **1.85.1** for 1.10506.0
+  (`cdshealpix` 0.7 needs 1.81). `Cargo.toml` pins `rust-version = "1.85.1"`
+  so `cargo` refuses older toolchains with a clear message. The README
+  Prerequisites row "Rust 1.80+" is therefore also stale and should read
+  1.85+; it moves with the crate on every bump.
 - The `Quick Start` section of the README tells users to run `duckdb -unsigned`
   and `LOAD 'build/release/...'`. That only works if their CLI is exactly
   v1.5.6; the README should say so.

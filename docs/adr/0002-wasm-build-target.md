@@ -60,7 +60,7 @@ The WASM job is opt-**out** (via `exclude_archs`), not opt-in. Our
 ### Decisive evidence: it was built, not inferred
 
 Everything above is read from source. It was then confirmed by actually
-building the extension, on macOS with emsdk, from this repository:
+building the extension with emsdk `latest` from this repository:
 
 ```
 $ make wasm_mvp && make wasm_eh && make wasm_threads
@@ -132,7 +132,7 @@ Invariant 1 is hereby satisfied: work may proceed past `hpx_ang2pix` to Gate 1.
   behaviour** until `make test-wasm` exists in Gate 5. This ADR establishes
   that the artifacts build, not that they are correct.
 
-## Follow-up for Emmanuel
+## Follow-up (requires a push; cannot be done by the agent)
 
 The CI evidence above is read from the pinned workflow definitions. To convert
 it into an observed green/red run, push the branch and read the "DuckDB-Wasm"

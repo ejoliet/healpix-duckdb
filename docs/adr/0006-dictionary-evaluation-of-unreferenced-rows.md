@@ -1,44 +1,55 @@
-# ADR-0006: Strict validation can reject a query whose result rows are all valid
+# ADR-0006: Single-column throwing functions can reject a query whose result rows are all valid
 
-- **Status**: Accepted (known limitation, mitigation scheduled for Gate 1)
+- **Status**: Accepted (known limitation; scope corrected 2026-10-09 after a second investigation)
 - **Date**: 2026-10-09
 - **Open Question**: none — found during Gate 0 review
-- **Gate**: 0 (discovered), mitigation in Gate 1
+- **Gate**: 0 (discovered); applies to every throwing function in Gates 1–3
 
 ## Context
 
-DuckDB scalar functions declare an error mode. A function that declares
-`CANNOT_ERROR` promises never to throw, and in exchange the executor is
-entitled to evaluate it on values that no live row references — in particular
-`TryExecuteDictionaryExpression` evaluates every entry of a dictionary vector
-once, rather than once per referencing row, which is a large win for
-low-cardinality columns.
+DuckDB scalar functions declare an error mode. A function declaring
+`CANNOT_ERROR` promises never to throw, and in exchange the executor may
+evaluate it on values no live row references: `TryExecuteDictionaryExpression`
+evaluates each entry of a dictionary vector once instead of once per
+referencing row.
 
 **The C Extension API exposes no error-mode setter.** There is no
-`duckdb_scalar_function_set_error_mode` in `duckdb.h`, and `duckdb-rs` 1.10506.0
-exposes nothing equivalent (verified: no `can_throw`, `CanThrow`, or
-`set_error_mode` symbol anywhere in the crate or `libduckdb-sys`). Every C-API
-scalar function therefore carries the default mode while `hpx_ang2pix` does in
-fact throw, via `InvalidInputException` raised by the C API wrapper:
+`duckdb_scalar_function_set_error_mode` in `duckdb.h` and nothing equivalent in
+`duckdb-rs` 1.10506.0. Every C-API scalar function carries the default mode
+while ours throw via the C API wrapper:
 
 ```cpp
-// duckdb/src/main/capi/scalar_function-c.cpp:201-210 (v1.5.6)
-auto all_const = input.AllConstant();
-input.Flatten();
-...
+// duckdb/src/main/capi/scalar_function-c.cpp:208-210 (v1.5.6)
 c_bind_info.info.function(c_function_info, c_input, c_result);
 if (!function_info.success) {
     throw InvalidInputException(function_info.error);
 }
 ```
 
-This is not a DuckDB bug. The optimization is correct *given the declaration we
-are forced to make*; we break the promise involuntarily.
+Not a DuckDB bug: the optimization is correct given the declaration we are
+forced to make.
 
-### Reproduced, not theorised
+### Exact preconditions (from source, not inferred)
 
-The hazard was raised in review at MEDIUM confidence with reachability for
-`DOUBLE` unconfirmed. It is confirmed:
+`duckdb/src/execution/expression_executor/execute_function.cpp` (v1.5.6):
+
+1. **Exactly one non-constant argument** (lines 24–37). The constructor walks
+   the children; a second non-foldable child calls `input_col_idx.SetInvalid()`
+   and the call site is permanently ineligible.
+2. That argument must arrive as a `DICTIONARY_VECTOR` **with a storage
+   dictionary id** (lines 59–67: `DictionaryId(..).empty()` → bail).
+3. Dictionary size < 20 000 and chunk fill ratio ≥ 0.5 (lines 50–51, 70–76).
+4. Return type is not `STRUCT` (line 15).
+
+Precondition 1 is decisive for this extension: **every coordinate function in
+the README API takes both `ra` and `dec`**. `hpx_ang2pix(12, ra, dec)`,
+`hpx29(ra, dec)`, `sky_in_cone(ra, dec, …)`, `moc_from_cone(ra, dec, …)` all
+have two column arguments and are therefore never eligible, regardless of
+storage.
+
+### What reproduces and what does not
+
+Reproduces — one column argument, dictionary vector produced by a hash join:
 
 ```sql
 WITH dict AS (SELECT * FROM (VALUES (0, 10.0::DOUBLE), (1, 400.0::DOUBLE)) v(k, ra)),
@@ -47,63 +58,75 @@ SELECT count(*) FROM rows JOIN dict USING(k) WHERE hpx_ang2pix(12, ra, 0.0) >= 0
 -- Invalid Input Error: healpix: ra must be in [0,360), got 400
 ```
 
-Every joined row has `k = 0`, so the join output has exactly one distinct value
-(`ra = 10.0`), 3000 rows, and **zero** rows with `ra = 400.0` — confirmed by
-running the same join with `COUNT(*) WHERE ra = 400.0`, which returns 0. The
-illegal value exists only as an unreferenced dictionary entry. Replacing
-`400.0` with a legal `300.0` makes the identical query return 3000, so the join
-shape is not the cause.
+Join output: 3000 rows, one distinct `ra = 10.0`, **zero** rows with 400.
+Replacing 400 with a legal 300 returns 3000. Pinned in `test/sql/pixel.test`
+with a passing control.
 
-Parquet `PLAIN_DICTIONARY` columns did **not** reproduce it in the cases tried;
-the reproducer needs a dictionary vector surviving into the expression, which
-the hash join produces.
+Does **not** reproduce — a 20 000-row catalogue with `-999` sentinels in `ra`
+and `dec`, filtered out, all of the following returning the correct 19 960:
+
+| Shape | Source | Result |
+|---|---|---|
+| `hpx_ang2pix(12, ra, dec)` filtered by flag | Parquet | ok |
+| `hpx_ang2pix(12, ra, dec)` filtered by `ra >= 0 AND dec >= -90` | Parquet | ok |
+| same, function in SELECT list after WHERE | Parquet | ok |
+| **single-column** `hpx_ang2pix(12, ra, 0.0)` filtered by flag | Parquet | ok |
+| **single-column** `hpx_ang2pix(12, ra, 0.0)` filtered by flag | native DuckDB table | ok |
+| two-column, native table | native | ok |
+
+The two-column rows are immune by precondition 1. The single-column rows passed
+because neither Parquet nor native storage delivered a dictionary vector for a
+`DOUBLE` column in these tests (the Parquet writer chose `PLAIN`); only the
+hash join did. That is an observation about these runs, not a guarantee about
+DuckDB storage.
+
+### Correction to the first version of this ADR
+
+The first version claimed "a user whose catalogue contains any out-of-domain
+RA/Dec may see a query fail even after filtering those rows out" and promoted
+`healpix_strict_input=false` to a required mitigation. That overstated it: the
+realistic two-column call is structurally ineligible. The hazard is real but
+narrow, and it lives in **functions with a single column argument**, which
+`hpx_ang2pix` only has when a caller passes a literal for one coordinate.
+
+## Where the hazard actually lives (Gates 1–3)
+
+Functions whose natural call shape has one column argument and which validate
+it are the exposed ones:
+
+- `hpx_parent(12, ipix, 8)`, `hpx_children(…)`, `hpx_range29(12, ipix)`,
+  `hpx_from_uniq(uniq)` — validate `ipix`/`uniq` range
+- `moc_from_json(col)`, `moc_from_ascii(col)`, `moc_from_fits(col)` —
+  reject malformed input
+- `moc_contains(moc_literal, hpx29_col)` — eligible, but does not throw on the
+  column argument, so harmless
+
+A bad value in such a column that reaches the function as a join-produced
+dictionary vector can fail the query even if no result row holds it.
 
 ## Options
 
 | # | Option | Cost | Verdict |
 |---|--------|------|---------|
-| A | Accept, pin with a regression test, and make `healpix_strict_input=false` a real escape hatch in Gate 1 | A documented sharp edge; the README already promises the setting that defuses it | **Chosen** |
-| B | `set_volatile()` on the function | Suppresses the dictionary optimization, and also constant folding and common-subexpression reuse, on the hottest function in the extension. Pays a permanent vectorised-path cost to fix a corner case that a setting already addresses | Rejected |
-| C | Stop erroring on out-of-domain input; return NULL instead | Contradicts the README error table and `healpix_strict_input=true` being the default. Silent wrong answers are worse than a loud refusal (invariant 3's spirit) | Rejected |
-| D | Flip `healpix_strict_input` to default `false` | Changes a documented default from Gate 0 on the strength of a corner case; the README is the spec and this is Emmanuel's call, not the agent's | Rejected for now; raised below |
+| A | Accept; pin with the regression test; document the single-column exposure; implement `healpix_strict_input=false` in Gate 1 as the README already promises, but as a feature, not an urgent mitigation | A documented sharp edge with a narrow trigger | **Chosen** |
+| B | `set_volatile()` on throwing functions | Also disables constant folding and CSE on the hottest functions, permanently, for a narrow corner case | Rejected |
+| C | Return NULL instead of erroring on out-of-domain input | Contradicts the README error table and makes bad data silent | Rejected |
+| D | Flip `healpix_strict_input` to default `false` | No longer justified by this ADR; the realistic call is immune. Stands or falls on semantics alone — see ADR-0007 if raised | Not decided here |
 
 ## Decision
 
-**Option A.**
-
-1. The behaviour is pinned by a `statement error` case plus a passing control
-   case in `test/sql/pixel.test`, so it is a known, observed property rather
-   than a latent surprise. If DuckDB's behaviour changes, that test fails and
-   points here.
-2. `healpix_strict_input=false` is **promoted from a convenience to the
-   documented mitigation** and must be implemented in Gate 1. It was previously
-   deferred out of Gate 0 as unnecessary surface; this ADR is the reason that
-   deferral ends. With `strict=false` the function normalises RA and clamps Dec
-   instead of throwing, which removes the throw entirely and makes the
-   `CANNOT_ERROR` declaration honest.
-3. No change to the error contract or to the default in Gate 0.
+**Option A.** No change to the error contract or to the `strict` default from
+this ADR. The regression test and its control stay. The Gate 1
+`healpix_strict_input=false` deliverable is the README's, not an emergency.
 
 ## Consequences
 
-- A user whose catalogue contains any out-of-domain RA/Dec may see a query fail
-  even after filtering those rows out, whenever the planner produces a
-  dictionary vector for the coordinate column. Low-cardinality coordinate
-  columns are unusual in real catalogues, which is why this is a sharp edge and
-  not a blocker — but ingest pipelines with sentinel values (`-999`, `9999`) are
-  exactly the case that would hit it.
-- Gate 1 gains a required deliverable: the `healpix_strict_input=false` path,
-  with its own test asserting that the reproducer above *succeeds* when the
-  setting is off.
-- Every future `hpx_*`, `moc_*`, and `sky_*` function that validates its input
-  inherits this behaviour. The validation helpers are shared (`check_order`,
-  `check_ra_dec`), so the mitigation applies once, in those helpers.
+- Each new throwing function with a single column argument must be assessed
+  against precondition 1 at design time, and a dictionary-vector test added
+  where the exposure is real (Gate 1: `hpx_parent`, `hpx_from_uniq`; Gate 2:
+  the `moc_from_*` parsers).
+- The README's `healpix_strict_input=false` is still a useful escape hatch for
+  the narrow case, and should be documented as such — not as the fix for a
+  broad failure.
 - If the C API ever gains an error-mode setter, revisit: declaring the function
-  as able to throw would fix this at the root and let strict mode stay on.
-
-## Decision needed from Emmanuel
-
-Should `healpix_strict_input` keep defaulting to `true`? Option D (default to
-`false`, normalise instead of reject) would make this class of failure
-impossible and matches what most astronomy tooling does with RA wrap-around,
-but it trades a loud error for silent normalisation and contradicts the current
-README. Not changed unilaterally.
+  as able to throw fixes this at the root.
