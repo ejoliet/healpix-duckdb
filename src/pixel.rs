@@ -229,8 +229,9 @@ mod tests {
 
     #[test]
     fn parent_prefix_holds_across_orders() {
-        // A NESTED index at order k is the order k-1 index times 4 plus the
-        // child offset, so dividing by 4 must walk up the tree.
+        // A NESTED index encodes each order as 2 bits appended to the parent
+        // index, so shifting right by 4 bits walks up exactly two orders
+        // (here order 10 to order 8).
         let deep = ang2pix(10, 266.405, -28.936).unwrap();
         let shallow = ang2pix(8, 266.405, -28.936).unwrap();
         assert_eq!(deep >> 4, shallow);

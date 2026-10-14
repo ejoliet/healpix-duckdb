@@ -143,3 +143,30 @@ git push origin main
 gh run watch
 gh run view --log --job "DuckDB-Wasm"
 ```
+
+## Addendum 2026-10-13: community precedent
+
+A survey of the `main` branch of `duckdb/community-extensions` (367 extension
+descriptors) puts this decision in context. Of those descriptors, 47 declare
+`build: cargo`, and 42 of the 47 set an `excluded_platforms` list containing
+`wasm_mvp;wasm_eh;wasm_threads`. The extensions that exclude WASM include
+`rusty_quack`, which is the published build of the upstream
+`duckdb/extension-template-rs` template itself, maintained by samansmink and
+mlafeldt. In other words, the official Rust template's own community listing
+does not ship WASM artifacts.
+
+The only cargo-built extension confirmed to serve a `wasm_eh` artifact from
+`https://community-extensions.duckdb.org/v1.5.6/wasm_eh/` is `duckfn_statrs`
+(repository `shijianjs/duckfn-statrs`). It is built on `quack-rs`/`duckfn` with
+`USE_UNSTABLE_C_API=0`, that is, against the stable C API, which is a different
+route from ours: the README's stack table explicitly rejected `quack-rs` as a
+second abstraction layer to debug under WASM.
+
+The upstream precedent for shipping WASM from a `duckdb-rs` extension is
+therefore thin, and the earlier claim in this ADR that six Rust extensions ship
+WASM should be read as a weaker signal than it sounds. What actually supports
+the decision for this repository is this repository's own evidence: the local
+three-platform build recorded above, now confirmed by GitHub Actions run
+38067920438 on `main`, in which all three WASM jobs (`wasm_mvp`, `wasm_eh`,
+`wasm_threads`) completed successfully alongside the Linux, macOS and Windows
+native jobs. The proof is our CI run, not upstream practice.

@@ -98,3 +98,26 @@ The README Prerequisites table should be corrected from "1.4.x" to "1.5.6".
   any diff is a real regression (invariant 4).
 - Gate 5's `description.yml` does not pin a DuckDB version — the community
   pipeline supplies it — so this decision lives entirely in our build files.
+
+## Addendum 2026-10-13: cost of the unstable C API
+
+`USE_UNSTABLE_C_API=1` is not a preference we could revisit cheaply: `duckdb-rs`
+requires unstable C API surface, so every artifact we produce carries the
+binary metadata `FIELD5 (abi_type) = C_STRUCT_UNSTABLE` and loads only on the
+exact pinned DuckDB release. The practical consequence is worth stating
+plainly, because it recurs on every DuckDB release rather than once.
+
+Each DuckDB release requires a rebuild and a coordinated pin bump across four
+places that must agree: `TARGET_DUCKDB_VERSION` in the `Makefile`,
+`duckdb_version` and `ci_tools_version` in `.github/workflows/ci.yml`, the git
+tag of the `extension-ci-tools` submodule, and the `duckdb` crate version in
+`Cargo.toml`. It additionally requires a pull request to
+`duckdb/community-extensions` bumping this extension's `ref` so the service
+rebuilds and serves artifacts for the new version. That PR is maintainer work,
+not agent work.
+
+The stable-ABI alternative, `USE_UNSTABLE_C_API=0`, is not simply unavailable:
+it exists, but only via `quack-rs`/`duckfn`, which the README's Recommended
+Stack table rejected as a second abstraction layer to debug under WASM. Taking
+it would mean changing the extension framework, not flipping a flag. The
+decision recorded above is unchanged.

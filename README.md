@@ -3,12 +3,12 @@
 > HEALPix pixels, IVOA MOC (Multi-Order Coverage) regions, and ADQL-exact cone and polygon search for DuckDB and DuckDB-WASM.
 
 ![CI](https://github.com/ejoliet/duckdb-healpix/actions/workflows/ci.yml/badge.svg)
-![DuckDB](https://img.shields.io/badge/duckdb-1.4%2B-yellow)
-![Rust](https://img.shields.io/badge/rust-1.80%2B-orange)
+![DuckDB](https://img.shields.io/badge/duckdb-1.5.6-yellow)
+![Rust](https://img.shields.io/badge/rust-1.85.1-orange)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **RDD type**: A — spec. An agent implements from this file plus `AGENTS.md`.
-**Status**: Gate 0 not started. Date: 2026-10-08.
+**Status**: Gate 0 complete 2026-10-09 (ADRs 0001–0007); Gate 1 next. Date: 2026-10-13.
 
 ---
 
@@ -123,8 +123,8 @@ duckdb-healpix/
 
 | Requirement | Version | Notes |
 |-------------|---------|-------|
-| Rust | 1.80+ | `rustup`; `wasm32-unknown-emscripten` target for WASM builds |
-| DuckDB | 1.4.x | pinned in `Makefile`; see Open Questions for bump policy |
+| Rust | 1.85.1+ | MSRV set by the `duckdb` crate; `rustup`; `wasm32-unknown-emscripten` target for WASM builds |
+| DuckDB | 1.5.6 (exact; unstable C API, see ADR-0003) | pinned in `Makefile`; see Open Questions for bump policy |
 | Python | 3.11+ | oracle generation only; `uv` managed |
 | Node | 20+ | WASM parity test only |
 | Docker | any | pgSphere/Q3C fixtures only; run by Emmanuel, not the agent |
@@ -247,7 +247,7 @@ All angles are **degrees, ICRS, `DOUBLE`**. All pixel indices are **NESTED, `BIG
 | MOC blob with bad version/length | `InvalidInputException: healpix: not a MOC v1 blob` |
 | polygon < 3 vertices, or self-intersecting | `InvalidInputException` |
 | NULL in any argument | NULL out (DuckDB default null propagation) |
-| Rust panic | caught at FFI boundary, surfaced as `InternalException` with message; never aborts the process |
+| Rust panic | caught at the FFI boundary and surfaced as an Invalid Input Error whose message starts `healpix: internal error`; never aborts the process. The C Extension API has a single error channel, so `InternalException` is unreachable (see ADR-0005) |
 
 ---
 
@@ -262,6 +262,8 @@ make test-wasm       # builds wasm_mvp, runs test/wasm/parity.mjs under Node, di
 make oracle          # regenerates test/golden/ from Python oracles (uv run tools/oracle/*.py)
 make bench           # tools/bench on Gaia DR3 HATS sample (Emmanuel runs; needs S3)
 ```
+
+`make test-golden` and `make oracle` are added with Gate 1; `make test-wasm` currently only builds the three WASM targets, and the parity runner lands in Gate 5.
 
 | Suite | Oracle | What it proves |
 |-------|--------|----------------|
@@ -306,13 +308,13 @@ These tools consume this extension. Changing a signature below is a breaking cha
 
 ## Open Questions
 
-| # | Question | Decide by |
-|---|----------|-----------|
-| 1 | Extension name: `healpix` (clear, but DuckDB Foundation may reserve it) vs `hpx` vs `skypix` | Gate 0 |
-| 2 | Does `extension-template-rs` build WASM targets in community CI? If not: C++ template + `cxx`, or native-only + separate wasm-bindgen build? | Gate 0 |
-| 3 | DuckDB version pin and bump policy (follow LTS line?) | Gate 0 |
-| 4 | Is pyacid's `XMATCH` already a DuckDB extension? If yes, scope v1 to MOC + pruning only and collaborate | Gate 0 |
-| 5 | Polygon hemisphere rule: ADQL 2.1 text vs pgSphere behaviour differ in degenerate cases. Pick ADQL; document divergence | Gate 2 |
+| # | Question | Decide by | Status |
+|---|----------|-----------|--------|
+| 1 | Extension name: `healpix` (clear, but DuckDB Foundation may reserve it) vs `hpx` vs `skypix` | Gate 0 | Resolved — ADR-0001 |
+| 2 | Does `extension-template-rs` build WASM targets in community CI? If not: C++ template + `cxx`, or native-only + separate wasm-bindgen build? | Gate 0 | Resolved — ADR-0002 |
+| 3 | DuckDB version pin and bump policy (follow LTS line?) | Gate 0 | Resolved — ADR-0003 |
+| 4 | Is pyacid's `XMATCH` already a DuckDB extension? If yes, scope v1 to MOC + pruning only and collaborate | Gate 0 | Resolved — ADR-0004 |
+| 5 | Polygon hemisphere rule: ADQL 2.1 text vs pgSphere behaviour differ in degenerate cases. Pick ADQL; document divergence | Gate 2 | Open |
 
 ---
 

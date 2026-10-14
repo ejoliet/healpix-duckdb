@@ -43,5 +43,10 @@ test: test_rust debug test_extension_debug
 test_rust:
 	cargo test
 
+# Build-only until Gate 5 adds test/wasm/parity.mjs; it proves the three WASM
+# platforms link, not that they behave. Requires emscripten (`emcc`) on PATH.
+.PHONY: test-wasm
+test-wasm: wasm_mvp wasm_eh wasm_threads
+
 clean: clean_build clean_rust
 clean_all: clean_configure clean
