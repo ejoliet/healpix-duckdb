@@ -16,7 +16,9 @@ Three commands. Run them in this order. Paste the tail of the output in your rep
 ## Rules
 
 - A gate is done only when its proof command exits 0. Name the command and paste the last ~20 lines.
-- Run a single file while iterating: `make test TEST_FILE=test/sql/moc.test`. Run the full suite before reporting.
+- Run a single file while iterating (`TEST_FILE=` is NOT a Make variable here; it is silently ignored):
+  `./configure/venv/bin/python3 -m duckdb_sqllogictest --test-dir test/sql --external-extension build/debug/healpix.duckdb_extension --file-path test/sql/moc.test`
+  Run the full suite before reporting.
 - A `test-golden` failure is a code bug. Do not edit `test/golden/`. Do not run `make oracle` to "fix" a failure.
 - `make oracle` is only for adding new fixtures. If it changes existing files, stop and write an ADR in `docs/adr/` explaining the diff.
 - New function → add a case in the matching `test/sql/*.test` before implementing it.

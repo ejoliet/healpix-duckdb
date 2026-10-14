@@ -1,0 +1,22 @@
+# name: test/sql/contract_adqlduck.test
+# description: Contract with adqlduck (healpix backend)
+# group: [healpix]
+
+# Contract with adqlduck (healpix backend). Every case here is something the
+# compiler emits or depends on. Do not change an existing expectation without a
+# CHANGELOG entry. Semantics are ADQL 2.1 (invariant 5). Errors are always
+# InvalidInputException; "healpix: internal error" distinguishes bugs (ADR-0005).
+
+require healpix
+
+# Gate 0: NULL in any argument -> NULL out.
+query III
+SELECT hpx_ang2pix(NULL, 10.0, 10.0), hpx_ang2pix(12, NULL, 10.0), hpx_ang2pix(12, 10.0, NULL);
+----
+NULL	NULL	NULL
+
+# Gate 0: out-of-range order error message starts with `healpix:`.
+statement error
+SELECT hpx_ang2pix(30, 0.0, 0.0);
+----
+healpix: order must be in [0,29]

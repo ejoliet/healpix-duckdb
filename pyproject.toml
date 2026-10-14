@@ -11,8 +11,6 @@ requires-python = ">=3.11"
 # committed".
 dependencies = []
 
-[dependency-groups]
-oracle = []
 
 [tool.uv]
 package = false

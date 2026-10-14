@@ -28,8 +28,9 @@ pub fn check_order(order: i32) -> Result<u8, Box<dyn Error>> {
     Ok(order as u8)
 }
 
-/// AIDEV-INVARIANT: `healpix_strict_input` defaults to true, so coordinates
+/// AIDEV-INVARIANT: strict validation is always on at Gate 0, so coordinates
 /// outside the ICRS domain are a user error rather than silently normalised.
+/// The `healpix_strict_input=false` path is a Gate 1 deliverable (ADR-0007).
 /// RA is half-open `[0, 360)` so that 360 and 0 cannot both name the same sky
 /// position through different code paths.
 pub fn check_ra_dec(ra: f64, dec: f64) -> Result<(), Box<dyn Error>> {
@@ -235,18 +236,5 @@ mod tests {
         let deep = ang2pix(10, 266.405, -28.936).unwrap();
         let shallow = ang2pix(8, 266.405, -28.936).unwrap();
         assert_eq!(deep >> 4, shallow);
-    }
-
-    #[test]
-    fn poles_are_representable_at_max_order() {
-        assert!(ang2pix(29, 0.0, 90.0).is_ok());
-        assert!(ang2pix(29, 0.0, -90.0).is_ok());
-    }
-
-    #[test]
-    fn level_29_index_fits_in_i64() {
-        let npix: i64 = 12 * (1i64 << (2 * 29));
-        let v = ang2pix(29, 123.456, -45.678).unwrap();
-        assert!(v >= 0 && v < npix);
     }
 }

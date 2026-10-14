@@ -158,7 +158,7 @@ Per `AGENTS.md`, all four are required, every time:
    ```bash
    uv run tools/gen_functions_doc.py      # writes docs/functions.md
    ```
-   If the function is ADQL-relevant, also update `docs/adql-mapping.md`.
+   If the function is in the adqlduck Downstream Contracts row (README), add its case to `test/sql/contract_adqlduck.test`.
 
 Then `make test`, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`.
 

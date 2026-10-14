@@ -45,7 +45,7 @@ DuckDB extension (Rust, C Extension API) for HEALPix, MOC, and spherical ADQL pr
 
 - Work gate by gate per README. End each gate with the proof command's output pasted in the report. Do not start the next gate without it.
 - Resolve each Open Question with a file in `docs/adr/NNNN-slug.md` (ADR template: Context / Options table / Decision / Consequences). No decisions in chat only.
-- New or changed function → update `function_descriptions.csv`, add a `test/sql/*.test` case, regenerate `docs/functions.md`, and if ADQL-relevant update `docs/adql-mapping.md`.
+- New or changed function → update `function_descriptions.csv`, add a `test/sql/*.test` case, regenerate `docs/functions.md`, and if the function is in the adqlduck Downstream Contracts row, add or update its case in `test/sql/contract_adqlduck.test`.
 - Give Emmanuel exact commands for anything he runs (Docker pgSphere, S3 benchmark, browser check, `git push`). Do not spend tokens trying to do those yourself.
 - Python helpers under `tools/` run with `uv run`; keep `uv.lock` committed; no `pip install` instructions.
 - Run `make test` before declaring any step done. `make test-wasm` before declaring Gate 5 done.
@@ -85,5 +85,5 @@ DuckDB extension (Rust, C Extension API) for HEALPix, MOC, and spherical ADQL pr
 
 - Spec and gates: `README.md`
 - Decisions: `docs/adr/`
-- ADQL mapping consumed by `adqlduck`: `docs/adql-mapping.md`
+- ADQL mapping: generated in the adqlduck repo; our side of the contract is `test/sql/contract_adqlduck.test`.
 - Data-model precedent: healpix-alchemy (Singer et al. 2022, AJ 163 209) — interval sets at level 29 in Postgres `INT8RANGE`; we do the same in a `BLOB`.

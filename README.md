@@ -23,7 +23,7 @@
 - ADQL-exact `CIRCLE` and `POLYGON` predicates with great-circle edges.
 - HATS partition pruning: a MOC becomes the list of `Norder/Dir/Npix` Parquet files to read.
 
-**Scope**: the shared primitive under `adqlduck` (ADQL→DuckDB compiler), `sidetap`, `tapdrop`, `obstap-local`, `lookout`, and `catdiff`. Must run in DuckDB CLI, Python, and DuckDB-WASM in a service worker.
+**Scope**: the optional primitive layer under `adqlduck` (ADQL→DuckDB compiler), `sidetap`, `tapdrop`, `obstap-local`, `lookout`, and `catdiff`. Must run in DuckDB CLI, Python, and DuckDB-WASM in a service worker.
 
 > 💡 Spherical geometry alone is not the gap — the `geography` (S2) community extension already does that. S2 cells are not HEALPix cells, so it cannot prune HATS or speak MOC. This extension targets exactly that gap.
 
@@ -35,7 +35,7 @@
 ADQL / SQL
    │
    ▼
-adqlduck compiler ──► SQL calling healpix functions
+adqlduck compiler (healpix backend) ──► SQL calling healpix functions
                               │
           ┌───────────────────┼───────────────────┐
           ▼                   ▼                   ▼
@@ -49,6 +49,8 @@ adqlduck compiler ──► SQL calling healpix functions
                               ▼
             read_parquet([pruned files]) WHERE _healpix_29 BETWEEN lo AND hi AND sky_in_cone(...)
 ```
+
+adqlduck also has a plain backend that needs no extension; this extension is the optional fast path for exact predicates, MOC-valued regions and cross-match.
 
 **Two-pass query model** (the design invariant):
 
@@ -109,7 +111,6 @@ duckdb-healpix/
 │   └── bench/               # Gaia DR3 HATS cone/pruning benchmark vs lsdb
 ├── docs/
 │   ├── functions.md         # generated from function_descriptions.csv
-│   ├── adql-mapping.md      # ADQL geometry → SQL (for adqlduck)
 │   └── adr/                 # decisions (0001-interval-sets.md, ...)
 ├── description.yml          # duckdb/community-extensions manifest
 ├── Cargo.toml
@@ -236,7 +237,6 @@ All angles are **degrees, ICRS, `DOUBLE`**. All pixel indices are **NESTED, `BIG
 | Macro | Purpose |
 |-------|---------|
 | `hats_partitions(root, moc)` | `SELECT norder, npix, root \|\| '/dataset/Norder=' \|\| norder \|\| '/Dir=' \|\| (npix // 10000 * 10000) \|\| '/Npix=' \|\| npix \|\| '.parquet' AS path FROM read_csv(root \|\| '/partition_info.csv') WHERE moc_overlaps_cell(moc, "Norder", "Npix")` |
-| `adql_circle(ra, dec, r)` / `adql_polygon(ra[], dec[])` | thin aliases documented in `docs/adql-mapping.md` for the compiler |
 
 ### Error handling
 
@@ -298,11 +298,13 @@ These tools consume this extension. Changing a signature below is a breaking cha
 
 | Consumer | Uses | Promise |
 |----------|------|---------|
-| `adqlduck` | `moc_from_cone/polygon`, `moc_contains`, `sky_in_cone`, `sky_in_polygon`, `sky_distance` | ADQL `CONTAINS`, `INTERSECTS`, `DISTANCE` compile 1:1; mapping table lives in `docs/adql-mapping.md` and is tested by `adqlduck` |
+| `adqlduck` (`healpix` backend) | `sky_in_cone`, `sky_in_polygon`, `sky_distance`, `moc_from_cone`, `moc_ranges`, `moc_contains`, `hpx29` | Signatures and the semantics asserted in `test/sql/contract_adqlduck.test`. The ADQL → SQL mapping is generated and owned by adqlduck (`docs/adql-mapping.md` there) |
 | `sidetap`, `tapdrop` | `hats_partitions`, two-pass pattern | WASM build on the community endpoint; load time < 1 s |
 | `obstap-local` | `moc_from_polygon`, `moc_overlaps_cell`, `moc_to_ascii` | `s_region` polygons → MOC at ingest; ObsCore spatial queries via `moc_overlaps` |
 | `lookout` | MOC I/O, `moc_intersect`, `moc_area_deg2` | compare archive coverage MOCs |
 | `catdiff` | `hpx29`, `hpx_parent` | bucketed release diffs |
+
+> Consumers must run the exact DuckDB version this extension is built for (`C_STRUCT_UNSTABLE`, ADR-0003). A pin bump is a downstream-visible event: record it in `CHANGELOG.md` so adqlduck and sidetap can move their DuckDB / duckdb-wasm pins in lockstep.
 
 ---
 
@@ -331,7 +333,7 @@ These tools consume this extension. Changing a signature below is a breaking cha
 | 2 | `MOC` type, constructors, set ops, I/O; `tools/oracle/moc.py` | `moc.test` passes byte-equal vs MOCPy |
 | 3 | `sky_*` predicates; pgSphere fixtures (SQL + compose in `tools/pgsphere/`, fixtures committed by Emmanuel) | `sky.test` passes: zero row-set diffs on 250 regions |
 | 4 | `hats_partitions` macro; `tools/oracle/hats.py` with `lsdb` | `hats.test` passes: pruned = full scan; partition list = lsdb |
-| 5 | `test/wasm/parity.mjs`; `description.yml` with `description: HEALPix and MOC for astronomy on the sphere`; `docs/functions.md` generated; `docs/adql-mapping.md` | `make test-wasm` passes; `description.yml` validates against community-extensions schema |
+| 5 | `test/wasm/parity.mjs`; `description.yml` with `description: HEALPix and MOC for astronomy on the sphere`; `docs/functions.md` generated | `make test-wasm` passes; `description.yml` validates against community-extensions schema |
 
 ### Division of labour
 
@@ -370,7 +372,7 @@ git push origin main
 - [ ] Zero diffs vs pgSphere/Q3C on the committed 250-region fixture.
 - [ ] `hats_partitions` matches `lsdb` on 100 random cones over Gaia DR3.
 - [ ] WASM extension < 2 MB gzipped; `LOAD` < 1 s on a laptop.
-- [ ] `docs/adql-mapping.md` complete for `CONTAINS`, `INTERSECTS`, `DISTANCE`, `CIRCLE`, `POLYGON`, `POINT`.
+- [ ] `test/sql/contract_adqlduck.test` passes and covers every function in the adqlduck Downstream Contracts row.
 - [ ] Open Questions 1–5 each have an ADR.
 
 ---
@@ -381,4 +383,4 @@ git push origin main
 2. Gates 1–2: pixels and MOC. This alone is useful to `lookout` and `catdiff`.
 3. Gate 3: predicates; Emmanuel regenerates pgSphere fixtures once.
 4. Gate 4: HATS pruning; run the Gaia DR3 benchmark and write up numbers vs `lsdb`.
-5. Gate 5: submit `description.yml` to `duckdb/community-extensions`; blog post with the browser demo; point `adqlduck` at the mapping doc.
+5. Gate 5: submit `description.yml` to `duckdb/community-extensions`; blog post with the browser demo; link to adqlduck's generated `docs/adql-mapping.md` from the README.
