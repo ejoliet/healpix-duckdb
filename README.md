@@ -140,7 +140,7 @@ No credentials. No network at test time: all fixtures are committed.
 git clone https://github.com/ejoliet/duckdb-healpix.git
 cd duckdb-healpix
 make                          # builds build/release/extension/healpix/healpix.duckdb_extension
-duckdb -unsigned
+duckdb -unsigned                # must be exactly v1.5.6 (unstable C API); see CONTRIBUTING.md
 ```
 
 ```sql

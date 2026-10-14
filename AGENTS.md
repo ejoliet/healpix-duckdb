@@ -57,7 +57,7 @@ DuckDB extension (Rust, C Extension API) for HEALPix, MOC, and spherical ADQL pr
 - `AIDEV-INVARIANT:` at every place ADQL semantics are encoded (inclusive radius, winding rule, RA normalisation). `AIDEV-NOTE:` for non-obvious performance choices (chunk-level buffers, binary search). Preserve on refactor.
 - `MOC` blob layout is versioned by its first byte. Bumping it is a breaking change; add `moc_upgrade()` rather than silently reinterpreting.
 - Angles are degrees at the SQL boundary; radians internally. Convert once at the edge, never mid-function.
-- Errors use `InvalidInputException` for user mistakes and `InternalException` for caught panics. Messages start with `healpix:`.
+- Errors are always `InvalidInputException` (the C Extension API has one error channel, ADR-0005). User mistakes: message starts `healpix:`. Caught panics: message starts `healpix: internal error`; never abort.
 - SQL macros are the only place `read_csv`, string concatenation of paths, or HATS directory layout appear.
 
 ---
